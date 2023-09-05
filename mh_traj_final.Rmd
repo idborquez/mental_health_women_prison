@@ -1,0 +1,1644 @@
+---
+title: "mh_traj"
+author: "Ignacio Borquez Infante"
+date: "03-11-2022"
+output: html_document
+---
+# Loading data and packages
+```{r results='hide', message = FALSE, warning=FALSE}
+options(max.print=10000) # increase maxprint
+
+pacman::p_load(lavaan, # CFA
+               psych, # CFA
+               ltm, # Cronbach alpha
+               haven, # Data import
+               readstata13, # Stata
+               dplyr, # Data managment
+               tidyr, 
+               ggplot2, # Plots
+               lubridate, # Dates
+               nnet, # mlogit
+               arsenal, # Tables
+               lcmm, # Mixed Models Using Latent Classes and Latent Processes
+               mice, # Multiple imputation by chained equations
+               miceadds) 
+
+# Loading Data
+df <- read.csv("~/GitHub/reentry-data-pipeline/output/bases/base_general_wide_v0_3.csv")
+
+# Drop observations
+df <- df[!(df$reg_muestra==0),]
+
+# Restrict to n=200 (participated in W4)
+df <- df[!(is.na(df$reg_ola_w4)),] # erase people that did not respond last wave
+```
+
+# Mental health scale
+```{r}
+# Mental health scale (Symptom Checklist 90-R)
+# Recode missings
+df <- df %>%
+  mutate_at(vars(4491:4939), 
+            function(x) car::recode(x, "0=0; 1=1; 2=2; 3=3; 4=4; -9=NA; 9=NA"))
+
+##### Baseline
+# Estimating the mean score
+df <- df %>%
+  mutate(scale_mean_w0 = rowMeans(df[, c("sal_31_1_w0","sal_31_10_w0","sal_31_19_w0","sal_31_28_w0","sal_31_37_w0","sal_31_46_w0",
+                                           "sal_31_2_w0","sal_31_11_w0","sal_31_20_w0","sal_31_29_w0","sal_31_38_w0",
+                                           "sal_31_3_w0","sal_31_12_w0","sal_31_21_w0","sal_31_30_w0","sal_31_39_w0","sal_31_48_w0",
+                                           "sal_31_4_w0","sal_31_13_w0","sal_31_22_w0","sal_31_31_w0","sal_31_40_w0","sal_31_49_w0",
+                                           "sal_31_5_w0","sal_31_14_w0","sal_31_23_w0","sal_31_32_w0","sal_31_41_w0","sal_31_50_w0",
+                                           "sal_31_6_w0","sal_31_15_w0","sal_31_24_w0","sal_31_33_w0","sal_31_42_w0",
+                                           "sal_31_7_w0","sal_31_16_w0","sal_31_25_w0","sal_31_34_w0","sal_31_43_w0",
+                                           "sal_31_8_w0","sal_31_17_w0","sal_31_26_w0","sal_31_35_w0","sal_31_44_w0",
+                                           "sal_31_9_w0","sal_31_18_w0","sal_31_27_w0","sal_31_36_w0","sal_31_45_w0",
+                                           "sal_31_51_w0","sal_31_60_w0","sal_31_69_w0","sal_31_78_w0","sal_31_87_w0",
+                                           "sal_31_52_w0","sal_31_61_w0","sal_31_70_w0","sal_31_79_w0","sal_31_88_w0",
+                                           "sal_31_53_w0","sal_31_62_w0","sal_31_71_w0","sal_31_80_w0","sal_31_89_w0",
+                                           "sal_31_54_w0","sal_31_63_w0","sal_31_72_w0","sal_31_81_w0","sal_31_90_w0",
+                                           "sal_31_55_w0","sal_31_64_w0","sal_31_73_w0","sal_31_82_w0",
+                                           "sal_31_56_w0","sal_31_65_w0","sal_31_74_w0","sal_31_83_w0",
+                                           "sal_31_57_w0","sal_31_66_w0","sal_31_75_w0","sal_31_84_w0",
+                                           "sal_31_58_w0","sal_31_67_w0","sal_31_76_w0","sal_31_85_w0",
+                                           "sal_31_59_w0","sal_31_68_w0","sal_31_77_w0","sal_31_86_w0")], na.rm=T))
+
+# Counting the number of NA per case
+df$count_na_w0 <- rowSums(is.na(df[, c("sal_31_1_w0","sal_31_10_w0","sal_31_19_w0","sal_31_28_w0","sal_31_37_w0","sal_31_46_w0",
+                                   "sal_31_2_w0","sal_31_11_w0","sal_31_20_w0","sal_31_29_w0","sal_31_38_w0",
+                                   "sal_31_3_w0","sal_31_12_w0","sal_31_21_w0","sal_31_30_w0","sal_31_39_w0","sal_31_48_w0",
+                                   "sal_31_4_w0","sal_31_13_w0","sal_31_22_w0","sal_31_31_w0","sal_31_40_w0","sal_31_49_w0",
+                                   "sal_31_5_w0","sal_31_14_w0","sal_31_23_w0","sal_31_32_w0","sal_31_41_w0","sal_31_50_w0",
+                                   "sal_31_6_w0","sal_31_15_w0","sal_31_24_w0","sal_31_33_w0","sal_31_42_w0",
+                                   "sal_31_7_w0","sal_31_16_w0","sal_31_25_w0","sal_31_34_w0","sal_31_43_w0",
+                                   "sal_31_8_w0","sal_31_17_w0","sal_31_26_w0","sal_31_35_w0","sal_31_44_w0",
+                                   "sal_31_9_w0","sal_31_18_w0","sal_31_27_w0","sal_31_36_w0","sal_31_45_w0",
+                                   "sal_31_51_w0","sal_31_60_w0","sal_31_69_w0","sal_31_78_w0","sal_31_87_w0",
+                                   "sal_31_52_w0","sal_31_61_w0","sal_31_70_w0","sal_31_79_w0","sal_31_88_w0",
+                                   "sal_31_53_w0","sal_31_62_w0","sal_31_71_w0","sal_31_80_w0","sal_31_89_w0",
+                                   "sal_31_54_w0","sal_31_63_w0","sal_31_72_w0","sal_31_81_w0","sal_31_90_w0",
+                                   "sal_31_55_w0","sal_31_64_w0","sal_31_73_w0","sal_31_82_w0",
+                                   "sal_31_56_w0","sal_31_65_w0","sal_31_74_w0","sal_31_83_w0",
+                                   "sal_31_57_w0","sal_31_66_w0","sal_31_75_w0","sal_31_84_w0",
+                                   "sal_31_58_w0","sal_31_67_w0","sal_31_76_w0","sal_31_85_w0",
+                                   "sal_31_59_w0","sal_31_68_w0","sal_31_77_w0","sal_31_86_w0")])) 
+
+
+# Severity
+df$severity_w0 <- df$scale_mean_w0
+df$severity_w0 <- car::recode(df$severity_w0,"0:1.424='No severe symptomatology';1.425:4='Severe symptomatology'") ## recode
+df$n_valid <- 89-df$count_na_w0 # estimate whom had more than 80 responded items
+df$n_valid_w0 <- df$n_valid
+df$severity_w0 <- as.factor(df$severity_w0) ## declared as factor
+df$severity_w0[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+df$scale_mean_w0[df$n_valid < 80] <- NA
+
+##### First week
+# Estimating the mean score of the scale
+df <- df %>%
+  mutate(scale_mean_w1 = rowMeans(df[, c("sal_31_1_w1","sal_31_10_w1","sal_31_19_w1","sal_31_28_w1","sal_31_37_w1","sal_31_46_w1",
+                                           "sal_31_2_w1","sal_31_11_w1","sal_31_20_w1","sal_31_29_w1","sal_31_38_w1","sal_31_47_w1",
+                                           "sal_31_3_w1","sal_31_12_w1","sal_31_21_w1","sal_31_30_w1","sal_31_39_w1","sal_31_48_w1",
+                                           "sal_31_4_w1","sal_31_13_w1","sal_31_22_w1","sal_31_31_w1","sal_31_40_w1","sal_31_49_w1",
+                                           "sal_31_5_w1","sal_31_14_w1","sal_31_23_w1","sal_31_32_w1","sal_31_41_w1","sal_31_50_w1",
+                                           "sal_31_6_w1","sal_31_15_w1","sal_31_24_w1","sal_31_33_w1","sal_31_42_w1",
+                                           "sal_31_7_w1","sal_31_16_w1","sal_31_25_w1","sal_31_34_w1","sal_31_43_w1",
+                                           "sal_31_8_w1","sal_31_17_w1","sal_31_26_w1","sal_31_35_w1","sal_31_44_w1",
+                                           "sal_31_9_w1","sal_31_18_w1","sal_31_27_w1","sal_31_36_w1","sal_31_45_w1",
+                                           "sal_31_51_w1","sal_31_60_w1","sal_31_69_w1","sal_31_78_w1","sal_31_87_w1",
+                                           "sal_31_52_w1","sal_31_61_w1","sal_31_70_w1","sal_31_79_w1","sal_31_88_w1",
+                                           "sal_31_53_w1","sal_31_62_w1","sal_31_71_w1","sal_31_80_w1","sal_31_89_w1",
+                                           "sal_31_54_w1","sal_31_63_w1","sal_31_72_w1","sal_31_81_w1","sal_31_90_w1",
+                                           "sal_31_55_w1","sal_31_64_w1","sal_31_73_w1","sal_31_82_w1",
+                                           "sal_31_56_w1","sal_31_65_w1","sal_31_74_w1","sal_31_83_w1",
+                                           "sal_31_57_w1","sal_31_66_w1","sal_31_75_w1","sal_31_84_w1",
+                                           "sal_31_58_w1","sal_31_67_w1","sal_31_76_w1","sal_31_85_w1",
+                                           "sal_31_59_w1","sal_31_68_w1","sal_31_77_w1","sal_31_86_w1")], na.rm=T))
+
+# Counting the number of NA per case
+df$count_na_w1 <- rowSums(is.na(df[, c("sal_31_1_w1","sal_31_10_w1","sal_31_19_w1","sal_31_28_w1","sal_31_37_w1","sal_31_46_w1",
+                                           "sal_31_2_w1","sal_31_11_w1","sal_31_20_w1","sal_31_29_w1","sal_31_38_w1","sal_31_47_w1",
+                                           "sal_31_3_w1","sal_31_12_w1","sal_31_21_w1","sal_31_30_w1","sal_31_39_w1","sal_31_48_w1",
+                                           "sal_31_4_w1","sal_31_13_w1","sal_31_22_w1","sal_31_31_w1","sal_31_40_w1","sal_31_49_w1",
+                                           "sal_31_5_w1","sal_31_14_w1","sal_31_23_w1","sal_31_32_w1","sal_31_41_w1","sal_31_50_w1",
+                                           "sal_31_6_w1","sal_31_15_w1","sal_31_24_w1","sal_31_33_w1","sal_31_42_w1",
+                                           "sal_31_7_w1","sal_31_16_w1","sal_31_25_w1","sal_31_34_w1","sal_31_43_w1",
+                                           "sal_31_8_w1","sal_31_17_w1","sal_31_26_w1","sal_31_35_w1","sal_31_44_w1",
+                                           "sal_31_9_w1","sal_31_18_w1","sal_31_27_w1","sal_31_36_w1","sal_31_45_w1",
+                                           "sal_31_51_w1","sal_31_60_w1","sal_31_69_w1","sal_31_78_w1","sal_31_87_w1",
+                                           "sal_31_52_w1","sal_31_61_w1","sal_31_70_w1","sal_31_79_w1","sal_31_88_w1",
+                                           "sal_31_53_w1","sal_31_62_w1","sal_31_71_w1","sal_31_80_w1","sal_31_89_w1",
+                                           "sal_31_54_w1","sal_31_63_w1","sal_31_72_w1","sal_31_81_w1","sal_31_90_w1",
+                                           "sal_31_55_w1","sal_31_64_w1","sal_31_73_w1","sal_31_82_w1",
+                                           "sal_31_56_w1","sal_31_65_w1","sal_31_74_w1","sal_31_83_w1",
+                                           "sal_31_57_w1","sal_31_66_w1","sal_31_75_w1","sal_31_84_w1",
+                                           "sal_31_58_w1","sal_31_67_w1","sal_31_76_w1","sal_31_85_w1",
+                                           "sal_31_59_w1","sal_31_68_w1","sal_31_77_w1","sal_31_86_w1")])) 
+# Severity
+df$severity_w1 <- df$scale_mean_w1
+df$severity_w1 <- car::recode(df$severity_w1,"0:1.424='No severe symptomatology';1.425:4='Severe symptomatology'")
+df$severity_w1 <- as.factor(df$severity_w1)
+df$n_valid <- 89-df$count_na_w1
+df$n_valid_w1 <- df$n_valid
+df$severity_w1[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+df$scale_mean_w1[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+
+##### Two Months
+# Estimating the mean score of the scale
+df <- df %>%
+  mutate(scale_mean_w2 = rowMeans(df[, c("sal_31_1_w2","sal_31_10_w2","sal_31_19_w2","sal_31_28_w2","sal_31_37_w2","sal_31_46_w2",
+                                           "sal_31_2_w2","sal_31_11_w2","sal_31_20_w2","sal_31_29_w2","sal_31_38_w2","sal_31_47_w2",
+                                           "sal_31_3_w2","sal_31_12_w2","sal_31_21_w2","sal_31_30_w2","sal_31_39_w2","sal_31_48_w2",
+                                           "sal_31_4_w2","sal_31_13_w2","sal_31_22_w2","sal_31_31_w2","sal_31_40_w2","sal_31_49_w2",
+                                           "sal_31_5_w2","sal_31_14_w2","sal_31_23_w2","sal_31_32_w2","sal_31_41_w2","sal_31_50_w2",
+                                           "sal_31_6_w2","sal_31_15_w2","sal_31_24_w2","sal_31_33_w2","sal_31_42_w2",
+                                           "sal_31_7_w2","sal_31_16_w2","sal_31_25_w2","sal_31_34_w2","sal_31_43_w2",
+                                           "sal_31_8_w2","sal_31_17_w2","sal_31_26_w2","sal_31_35_w2","sal_31_44_w2",
+                                           "sal_31_9_w2","sal_31_18_w2","sal_31_27_w2","sal_31_36_w2","sal_31_45_w2",
+                                           "sal_31_51_w2","sal_31_60_w2","sal_31_69_w2","sal_31_78_w2","sal_31_87_w2",
+                                           "sal_31_52_w2","sal_31_61_w2","sal_31_70_w2","sal_31_79_w2","sal_31_88_w2",
+                                           "sal_31_53_w2","sal_31_62_w2","sal_31_71_w2","sal_31_80_w2","sal_31_89_w2",
+                                           "sal_31_54_w2","sal_31_63_w2","sal_31_72_w2","sal_31_81_w2","sal_31_90_w2",
+                                           "sal_31_55_w2","sal_31_64_w2","sal_31_73_w2","sal_31_82_w2",
+                                           "sal_31_56_w2","sal_31_65_w2","sal_31_74_w2","sal_31_83_w2",
+                                           "sal_31_57_w2","sal_31_66_w2","sal_31_75_w2","sal_31_84_w2",
+                                           "sal_31_58_w2","sal_31_67_w2","sal_31_76_w2","sal_31_85_w2",
+                                           "sal_31_59_w2","sal_31_68_w2","sal_31_77_w2","sal_31_86_w2")], na.rm=T))
+
+# Counting the number of NA per case
+df$count_na_w2 <- rowSums(is.na(df[, c("sal_31_1_w2","sal_31_10_w2","sal_31_19_w2","sal_31_28_w2","sal_31_37_w2","sal_31_46_w2",
+                                           "sal_31_2_w2","sal_31_11_w2","sal_31_20_w2","sal_31_29_w2","sal_31_38_w2","sal_31_47_w2",
+                                           "sal_31_3_w2","sal_31_12_w2","sal_31_21_w2","sal_31_30_w2","sal_31_39_w2","sal_31_48_w2",
+                                           "sal_31_4_w2","sal_31_13_w2","sal_31_22_w2","sal_31_31_w2","sal_31_40_w2","sal_31_49_w2",
+                                           "sal_31_5_w2","sal_31_14_w2","sal_31_23_w2","sal_31_32_w2","sal_31_41_w2","sal_31_50_w2",
+                                           "sal_31_6_w2","sal_31_15_w2","sal_31_24_w2","sal_31_33_w2","sal_31_42_w2",
+                                           "sal_31_7_w2","sal_31_16_w2","sal_31_25_w2","sal_31_34_w2","sal_31_43_w2",
+                                           "sal_31_8_w2","sal_31_17_w2","sal_31_26_w2","sal_31_35_w2","sal_31_44_w2",
+                                           "sal_31_9_w2","sal_31_18_w2","sal_31_27_w2","sal_31_36_w2","sal_31_45_w2",
+                                           "sal_31_51_w2","sal_31_60_w2","sal_31_69_w2","sal_31_78_w2","sal_31_87_w2",
+                                           "sal_31_52_w2","sal_31_61_w2","sal_31_70_w2","sal_31_79_w2","sal_31_88_w2",
+                                           "sal_31_53_w2","sal_31_62_w2","sal_31_71_w2","sal_31_80_w2","sal_31_89_w2",
+                                           "sal_31_54_w2","sal_31_63_w2","sal_31_72_w2","sal_31_81_w2","sal_31_90_w2",
+                                           "sal_31_55_w2","sal_31_64_w2","sal_31_73_w2","sal_31_82_w2",
+                                           "sal_31_56_w2","sal_31_65_w2","sal_31_74_w2","sal_31_83_w2",
+                                           "sal_31_57_w2","sal_31_66_w2","sal_31_75_w2","sal_31_84_w2",
+                                           "sal_31_58_w2","sal_31_67_w2","sal_31_76_w2","sal_31_85_w2",
+                                           "sal_31_59_w2","sal_31_68_w2","sal_31_77_w2","sal_31_86_w2")])) 
+
+# Severity
+df$severity_w2 <- df$scale_mean_w2
+df$severity_w2 <- car::recode(df$severity_w2,"0:1.424='No severe symptomatology';1.425:4='Severe symptomatology'")
+df$severity_w2 <- as.factor(df$severity_w2)
+df$n_valid <- 89-df$count_na_w2
+df$n_valid_w2 <- df$n_valid
+df$severity_w2[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+df$scale_mean_w2[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+
+##### Six Months
+# Estimating the mean score of the scale
+df <- df %>%
+  mutate(scale_mean_w3 = rowMeans(df[, c("sal_31_1_w3","sal_31_10_w3","sal_31_19_w3","sal_31_28_w3","sal_31_37_w3","sal_31_46_w3",
+                                           "sal_31_2_w3","sal_31_11_w3","sal_31_20_w3","sal_31_29_w3","sal_31_38_w3","sal_31_47_w3",
+                                           "sal_31_3_w3","sal_31_12_w3","sal_31_21_w3","sal_31_30_w3","sal_31_39_w3","sal_31_48_w3",
+                                           "sal_31_4_w3","sal_31_13_w3","sal_31_22_w3","sal_31_31_w3","sal_31_40_w3","sal_31_49_w3",
+                                           "sal_31_5_w3","sal_31_14_w3","sal_31_23_w3","sal_31_32_w3","sal_31_41_w3","sal_31_50_w3",
+                                           "sal_31_6_w3","sal_31_15_w3","sal_31_24_w3","sal_31_33_w3","sal_31_42_w3",
+                                           "sal_31_7_w3","sal_31_16_w3","sal_31_25_w3","sal_31_34_w3","sal_31_43_w3",
+                                           "sal_31_8_w3","sal_31_17_w3","sal_31_26_w3","sal_31_35_w3","sal_31_44_w3",
+                                           "sal_31_9_w3","sal_31_18_w3","sal_31_27_w3","sal_31_36_w3","sal_31_45_w3",
+                                           "sal_31_51_w3","sal_31_60_w3","sal_31_69_w3","sal_31_78_w3","sal_31_87_w3",
+                                           "sal_31_52_w3","sal_31_61_w3","sal_31_70_w3","sal_31_79_w3","sal_31_88_w3",
+                                           "sal_31_53_w3","sal_31_62_w3","sal_31_71_w3","sal_31_80_w3","sal_31_89_w3",
+                                           "sal_31_54_w3","sal_31_63_w3","sal_31_72_w3","sal_31_81_w3","sal_31_90_w3",
+                                           "sal_31_55_w3","sal_31_64_w3","sal_31_73_w3","sal_31_82_w3",
+                                           "sal_31_56_w3","sal_31_65_w3","sal_31_74_w3","sal_31_83_w3",
+                                           "sal_31_57_w3","sal_31_66_w3","sal_31_75_w3","sal_31_84_w3",
+                                           "sal_31_58_w3","sal_31_67_w3","sal_31_76_w3","sal_31_85_w3",
+                                           "sal_31_59_w3","sal_31_68_w3","sal_31_77_w3","sal_31_86_w3")], na.rm=T))
+
+# Counting the number of NA per case
+df$count_na_w3 <- rowSums(is.na(df[, c("sal_31_1_w3","sal_31_10_w3","sal_31_19_w3","sal_31_28_w3","sal_31_37_w3","sal_31_46_w3",
+                                           "sal_31_2_w3","sal_31_11_w3","sal_31_20_w3","sal_31_29_w3","sal_31_38_w3","sal_31_47_w3",
+                                           "sal_31_3_w3","sal_31_12_w3","sal_31_21_w3","sal_31_30_w3","sal_31_39_w3","sal_31_48_w3",
+                                           "sal_31_4_w3","sal_31_13_w3","sal_31_22_w3","sal_31_31_w3","sal_31_40_w3","sal_31_49_w3",
+                                           "sal_31_5_w3","sal_31_14_w3","sal_31_23_w3","sal_31_32_w3","sal_31_41_w3","sal_31_50_w3",
+                                           "sal_31_6_w3","sal_31_15_w3","sal_31_24_w3","sal_31_33_w3","sal_31_42_w3",
+                                           "sal_31_7_w3","sal_31_16_w3","sal_31_25_w3","sal_31_34_w3","sal_31_43_w3",
+                                           "sal_31_8_w3","sal_31_17_w3","sal_31_26_w3","sal_31_35_w3","sal_31_44_w3",
+                                           "sal_31_9_w3","sal_31_18_w3","sal_31_27_w3","sal_31_36_w3","sal_31_45_w3",
+                                           "sal_31_51_w3","sal_31_60_w3","sal_31_69_w3","sal_31_78_w3","sal_31_87_w3",
+                                           "sal_31_52_w3","sal_31_61_w3","sal_31_70_w3","sal_31_79_w3","sal_31_88_w3",
+                                           "sal_31_53_w3","sal_31_62_w3","sal_31_71_w3","sal_31_80_w3","sal_31_89_w3",
+                                           "sal_31_54_w3","sal_31_63_w3","sal_31_72_w3","sal_31_81_w3","sal_31_90_w3",
+                                           "sal_31_55_w3","sal_31_64_w3","sal_31_73_w3","sal_31_82_w3",
+                                           "sal_31_56_w3","sal_31_65_w3","sal_31_74_w3","sal_31_83_w3",
+                                           "sal_31_57_w3","sal_31_66_w3","sal_31_75_w3","sal_31_84_w3",
+                                           "sal_31_58_w3","sal_31_67_w3","sal_31_76_w3","sal_31_85_w3",
+                                           "sal_31_59_w3","sal_31_68_w3","sal_31_77_w3","sal_31_86_w3")])) 
+
+# Severity
+df$severity_w3 <- df$scale_mean_w3
+df$severity_w3 <- car::recode(df$severity_w3,"0:1.424='No severe symptomatology';1.425:4='Severe symptomatology'")
+df$severity_w3 <- as.factor(df$severity_w3)
+df$n_valid <- 89-df$count_na_w3
+df$n_valid_w3 <- df$n_valid
+df$severity_w3[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+df$scale_mean_w3[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+
+##### Twelve Months
+df <- df %>%
+  mutate(scale_mean_w4 = rowMeans(df[, c("sal_31_1_w4","sal_31_10_w4","sal_31_19_w4","sal_31_28_w4","sal_31_37_w4","sal_31_46_w4",
+                                           "sal_31_2_w4","sal_31_11_w4","sal_31_20_w4","sal_31_29_w4","sal_31_38_w4","sal_31_47_w4",
+                                           "sal_31_3_w4","sal_31_12_w4","sal_31_21_w4","sal_31_30_w4","sal_31_39_w4","sal_31_48_w4",
+                                           "sal_31_4_w4","sal_31_13_w4","sal_31_22_w4","sal_31_31_w4","sal_31_40_w4","sal_31_49_w4",
+                                           "sal_31_5_w4","sal_31_14_w4","sal_31_23_w4","sal_31_32_w4","sal_31_41_w4","sal_31_50_w4",
+                                           "sal_31_6_w4","sal_31_15_w4","sal_31_24_w4","sal_31_33_w4","sal_31_42_w4",
+                                           "sal_31_7_w4","sal_31_16_w4","sal_31_25_w4","sal_31_34_w4","sal_31_43_w4",
+                                           "sal_31_8_w4","sal_31_17_w4","sal_31_26_w4","sal_31_35_w4","sal_31_44_w4",
+                                           "sal_31_9_w4","sal_31_18_w4","sal_31_27_w4","sal_31_36_w4","sal_31_45_w4",
+                                           "sal_31_51_w4","sal_31_60_w4","sal_31_69_w4","sal_31_78_w4","sal_31_87_w4",
+                                           "sal_31_52_w4","sal_31_61_w4","sal_31_70_w4","sal_31_79_w4","sal_31_88_w4",
+                                           "sal_31_53_w4","sal_31_62_w4","sal_31_71_w4","sal_31_80_w4","sal_31_89_w4",
+                                           "sal_31_54_w4","sal_31_63_w4","sal_31_72_w4","sal_31_81_w4","sal_31_90_w4",
+                                           "sal_31_55_w4","sal_31_64_w4","sal_31_73_w4","sal_31_82_w4",
+                                           "sal_31_56_w4","sal_31_65_w4","sal_31_74_w4","sal_31_83_w4",
+                                           "sal_31_57_w4","sal_31_66_w4","sal_31_75_w4","sal_31_84_w4",
+                                           "sal_31_58_w4","sal_31_67_w4","sal_31_76_w4","sal_31_85_w4",
+                                           "sal_31_59_w4","sal_31_68_w4","sal_31_77_w4","sal_31_86_w4")], na.rm=T))
+
+df$count_na_w4 <- rowSums(is.na(df[, c("sal_31_1_w4","sal_31_10_w4","sal_31_19_w4","sal_31_28_w4","sal_31_37_w4","sal_31_46_w4",
+                                           "sal_31_2_w4","sal_31_11_w4","sal_31_20_w4","sal_31_29_w4","sal_31_38_w4","sal_31_47_w4",
+                                           "sal_31_3_w4","sal_31_12_w4","sal_31_21_w4","sal_31_30_w4","sal_31_39_w4","sal_31_48_w4",
+                                           "sal_31_4_w4","sal_31_13_w4","sal_31_22_w4","sal_31_31_w4","sal_31_40_w4","sal_31_49_w4",
+                                           "sal_31_5_w4","sal_31_14_w4","sal_31_23_w4","sal_31_32_w4","sal_31_41_w4","sal_31_50_w4",
+                                           "sal_31_6_w4","sal_31_15_w4","sal_31_24_w4","sal_31_33_w4","sal_31_42_w4",
+                                           "sal_31_7_w4","sal_31_16_w4","sal_31_25_w4","sal_31_34_w4","sal_31_43_w4",
+                                           "sal_31_8_w4","sal_31_17_w4","sal_31_26_w4","sal_31_35_w4","sal_31_44_w4",
+                                           "sal_31_9_w4","sal_31_18_w4","sal_31_27_w4","sal_31_36_w4","sal_31_45_w4",
+                                           "sal_31_51_w4","sal_31_60_w4","sal_31_69_w4","sal_31_78_w4","sal_31_87_w4",
+                                           "sal_31_52_w4","sal_31_61_w4","sal_31_70_w4","sal_31_79_w4","sal_31_88_w4",
+                                           "sal_31_53_w4","sal_31_62_w4","sal_31_71_w4","sal_31_80_w4","sal_31_89_w4",
+                                           "sal_31_54_w4","sal_31_63_w4","sal_31_72_w4","sal_31_81_w4","sal_31_90_w4",
+                                           "sal_31_55_w4","sal_31_64_w4","sal_31_73_w4","sal_31_82_w4",
+                                           "sal_31_56_w4","sal_31_65_w4","sal_31_74_w4","sal_31_83_w4",
+                                           "sal_31_57_w4","sal_31_66_w4","sal_31_75_w4","sal_31_84_w4",
+                                           "sal_31_58_w4","sal_31_67_w4","sal_31_76_w4","sal_31_85_w4",
+                                           "sal_31_59_w4","sal_31_68_w4","sal_31_77_w4","sal_31_86_w4")])) 
+
+
+# Severity
+df$severity_w4 <- df$scale_mean_w4
+df$severity_w4 <- car::recode(df$severity_w4,"0:1.424='No severe symptomatology';1.425:4='Severe symptomatology'")
+df$severity_w4 <- as.factor(df$severity_w4)
+df$n_valid <- 89-df$count_na_w4
+df$n_valid_w4 <- df$n_valid
+df$severity_w4[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+df$scale_mean_w4[df$n_valid < 80] <- NA # replacing the mean scale as missing if the case is not valid
+```
+
+# LCMM
+```{r eval=FALSE}
+df2 <- df %>%
+ dplyr::select(reg_folio, 
+        scale_mean_w0, scale_mean_w1, scale_mean_w2, scale_mean_w3, scale_mean_w4)
+
+long_scale <- df2 %>%
+  gather(scale, scale, -c(reg_folio))
+
+long_scale$wave[long_scale$scale == 'scale_mean_w0'] <- 0
+long_scale$wave[long_scale$scale == 'scale_mean_w1'] <- 1
+long_scale$wave[long_scale$scale == 'scale_mean_w2'] <- 2
+long_scale$wave[long_scale$scale == 'scale_mean_w3'] <- 3
+long_scale$wave[long_scale$scale == 'scale_mean_w4'] <- 4
+
+long_scale <- long_scale[-c(2)]
+
+## Estimation
+set.seed(101)
+m1 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+           random= ~ 1 ,
+           data=long_scale,
+           subject="reg_folio")
+
+set.seed(101)
+m2 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+           mixture = ~ wave + I(wave^2) + I(wave^3),
+           random= ~ 1,
+           data=long_scale,
+           subject="reg_folio",
+           ng=2,
+           B=random(m1),
+           maxiter = 300)
+
+set.seed(101)
+m3 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+           mixture = ~ wave + I(wave^2) + I(wave^3),
+           random= ~ 1,
+           data=long_scale,
+           subject="reg_folio",
+           ng=3,
+           B=random(m1),
+           maxiter = 300)
+
+set.seed(101)
+m4 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+           mixture = ~ wave + I(wave^2) + I(wave^3),
+           random= ~ 1,
+           data=long_scale,
+           subject="reg_folio",
+           ng=4,
+           B=random(m1),
+           maxiter = 300)
+
+set.seed(101)
+m5 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+           mixture = ~ wave + I(wave^2) + I(wave^3),
+           random= ~ 1,
+           data=long_scale,
+           subject="reg_folio",
+           ng=5,
+           B=random(m1),
+           maxiter = 300)
+
+set.seed(101)
+m6 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+           mixture = ~ wave + I(wave^2) + I(wave^3),
+           random= ~ 1,
+           data=long_scale,
+           subject="reg_folio",
+           ng=6,
+           B=random(m1),
+           maxiter = 300)
+
+summarytable(m1, m2, m3, m4, m5, m6, which = c("G", "loglik", "conv", "npm", "AIC", "BIC", "SABIC", "ICL", "entropy", "%class"))
+```
+
+## LRT
+```{r eval=FALSE}
+library(tidyLPA)
+# store values baseline model
+n <- m1$ns #number of observations (should be equal in both models)
+null_ll <- m5$loglik #log-likelihood
+null_param <- 26 # number of parameters
+null_classes <- 5 # number of classes
+
+# Store values alternative model
+alt_ll <- m6$loglik #log-likelihood
+alt_param <- 31 # number of parameters
+alt_classes <- 6 # number of classes
+
+# use calc_lrt from tidyLPA package
+calc_lrt(n, null_ll, null_param, null_classes, alt_ll, alt_param, alt_classes)
+```
+
+### Prunning
+```{r eval=FALSE}
+binit <- m3$best
+binit[c(14)] <- 0
+
+set.seed(101)
+m3_v2 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+              mixture = ~ wave + I(wave^2) + I(wave^3),
+              random= ~ 1,
+              data = long_scale,
+              subject="reg_folio",
+              ng=3,
+              B=binit,
+              posfix = c(14),
+              maxiter = 300)
+
+binit <- m3_v2$best
+binit[c(12,14)] <- 0
+
+set.seed(101)
+m3_v2 <- hlme(scale ~ wave + I(wave^2) + I(wave^3),
+              mixture = ~ wave + I(wave^2) + I(wave^3),
+              random= ~ 1,
+              data = long_scale,
+              subject="reg_folio",
+              ng=3,
+              B=binit,
+              posfix = c(12,14),
+              maxiter = 300)
+
+library(LCTMtools)
+LCTMtoolkit(m3_v2)
+postprob(m3_v2) # Posterior probabilities
+
+save(m3_v2, file = "mh_traj_lcga_n3_v2.Rda")
+```
+
+## Plot
+```{r eval=FALSE}
+load("mh_traj_lcga_n3_v2.Rda")
+# Load the "extrafont" package
+library(extrafont)
+loadfonts()
+
+# Set the Arial font family and size
+par(family = "Arial", cex = 0.8)
+
+load("mh_traj_lcga_n3_v2.Rda")
+newdata <- data.frame(wave = seq(0, 4, length = 5))
+pred0 <- predictY(m3_v2, newdata, var.time = "wave")
+predIC0 <- predictY(m3_v2, newdata, var.time = "wave", draws = TRUE)
+
+png("MH_traj_n3_final.png", width = 800, height = 500, units = "px")
+plot(pred0)
+plot(predIC0,
+     col = c("deeppink", "deepskyblue", "gold1"),
+     shades = T, 
+     ylim = c(0, 3),
+     bty = "l",
+     ylab = "Global Severity Index (GIS) - SCL-90-R",
+     xlab = "Wave",
+     main = "Trajectories of Global Severity Index (GIS) SCL-90-R",
+     legend = c("High", "Low", "Increasing"))
+
+# Add a horizontal line to the plot
+abline(h = 1.42, col = "gray40", lty = 2)
+dev.off()
+```
+
+# Obtaining the LCGA
+```{r}
+load("mh_traj_lcga_n3_v2.Rda")
+pprob <- m3_v2$pprob
+
+df <- merge(df, pprob, by = "reg_folio") 
+table(df$class)
+
+df <- df %>%
+  mutate_at(vars("class"), 
+            function(x) car::recode(x, "1=3;2=1;3=2"))
+
+df[c("class")] <- lapply(df[c("class")], factor,
+                                 levels=c("1", 
+                                          "2",
+                                          "3"), 
+                                 labels = c("Low",
+                                            "Increasing",
+                                            "High"))
+```
+# Other outomes
+```{r}
+## Substance dependence 12 months prior baseline
+df <- df %>%
+  mutate_at(vars("dro_6_1_w0", "dro_6_2_w0",
+                 "dro_6_3_w0", "dro_6_4_w0",
+                 "dro_6_5_w0", "dro_6_6_w0",
+                 "dro_6_7_w0", "dro_6_8_w0",
+                 "dro_6_9_w0", "dro_6_10_w0",
+                 "dro_6_11_w0"), 
+            function(x) car::recode(x, "-9:-7=0;1=1;NA=NA"))
+
+df <- df %>%
+  mutate_at(vars("dro_7_1_w0", "dro_7_2_w0",
+                 "dro_7_3_w0", "dro_7_4_w0",
+                 "dro_7_5_w0", "dro_7_6_w0",
+                 "dro_7_7_w0", "dro_7_8_w0",
+                 "dro_7_9_w0", "dro_7_10_w0",
+                 "dro_7_11_w0"), 
+            function(x) car::recode(x, "-9:-7=0;1=1;NA=NA"))
+
+# Symptom 1
+df$dep_1 <- NA
+df$dep_1[df$dro_6_1_w0 == 1 | df$dro_7_1_w0 == 1] <- 1
+df$dep_1[is.na(df$dep_1)] <- 0
+
+# Symptom 2
+df$dep_2 <- NA
+df$dep_2[df$dro_6_2_w0 == 1 | df$dro_7_2_w0 == 1] <- 1
+df$dep_2[is.na(df$dep_2)] <- 0
+
+# Symptom 3
+df$dep_3 <- NA
+df$dep_3[df$dro_6_3_w0 == 1 | df$dro_7_3_w0 == 1] <- 1
+df$dep_3[is.na(df$dep_3)] <- 0
+
+# Symptom 4
+df$dep_4 <- NA
+df$dep_4[df$dro_6_4_w0 == 1 | df$dro_7_4_w0 == 1] <- 1
+df$dep_4[is.na(df$dep_4)] <- 0
+
+# Symptom 5
+df$dep_5 <- NA
+df$dep_5[df$dro_6_5_w0 == 1 | df$dro_7_5_w0 == 1] <- 1
+df$dep_5[is.na(df$dep_5)] <- 0
+
+# Symptom 6
+df$dep_6 <- NA
+df$dep_6[df$dro_6_6_w0 == 1 | df$dro_7_6_w0 == 1] <- 1
+df$dep_6[is.na(df$dep_6)] <- 0
+
+# Symptom 7
+df$dep_7 <- NA
+df$dep_7[df$dro_6_7_w0 == 1 | df$dro_7_7_w0 == 1] <- 1
+df$dep_7[is.na(df$dep_7)] <- 0
+
+# Symptom 8
+df$dep_8 <- NA
+df$dep_8[df$dro_6_8_w0 == 1 | df$dro_7_8_w0 == 1] <- 1
+df$dep_8[is.na(df$dep_8)] <- 0
+
+# Symptom 9
+df$dep_9 <- NA
+df$dep_9[df$dro_6_9_w0 == 1 | df$dro_7_9_w0 == 1] <- 1
+df$dep_9[is.na(df$dep_9)] <- 0
+
+# Symptom 10
+df$dep_10 <- NA
+df$dep_10[df$dro_6_10_w0 == 1 | df$dro_7_10_w0 == 1] <- 1
+df$dep_10[is.na(df$dep_10)] <- 0
+
+# Symptom 11
+df$dep_11 <- NA
+df$dep_11[df$dro_6_11_w0 == 1 | df$dro_7_11_w0 == 1] <- 1
+df$dep_11[is.na(df$dep_11)] <- 0
+
+# Yes if "Yes" in 1 or (2 & 3) == 1.
+df$dep12 <- NA
+df$dep12[df$dep_1 == 1 | df$dep_2 == 1] <- 1
+df$dep12[is.na(df$dep12)] <- 0
+
+df <- df %>%
+  mutate(dep_sum_w0 = rowSums(df[, c("dep12","dep_3","dep_4","dep_5","dep_6","dep_7")], na.rm=T))
+
+df <- df %>%
+  mutate_at(vars("dep_sum_w0"), 
+            function(x) car::recode(x, "0:2=0;3:6=1;NA=NA"))
+
+## Substance dependence 12 months prior baseline
+df <- df %>%
+  mutate_at(vars("dro_6_1_w4", "dro_6_2_w4",
+                 "dro_6_3_w4", "dro_6_4_w4",
+                 "dro_6_5_w4", "dro_6_6_w4",
+                 "dro_6_7_w4", "dro_6_8_w4",
+                 "dro_6_9_w4", "dro_6_10_w4",
+                 "dro_6_11_w4"), 
+            function(x) car::recode(x, "-9:-7=0;1=1;NA=NA"))
+
+df <- df %>%
+  mutate_at(vars("dro_7_1_w4", "dro_7_2_w4",
+                 "dro_7_3_w4", "dro_7_4_w4",
+                 "dro_7_5_w4", "dro_7_6_w4",
+                 "dro_7_7_w4", "dro_7_8_w4",
+                 "dro_7_9_w4", "dro_7_10_w4",
+                 "dro_7_11_w4"), 
+            function(x) car::recode(x, "-9:-7=0;1=1;NA=NA"))
+
+# Symptom 1
+df$dep_1 <- NA
+df$dep_1[df$dro_6_1_w4 == 1 | df$dro_7_1_w4 == 1] <- 1
+df$dep_1[is.na(df$dep_1)] <- 0
+
+# Symptom 2
+df$dep_2 <- NA
+df$dep_2[df$dro_6_2_w4 == 1 | df$dro_7_2_w4 == 1] <- 1
+df$dep_2[is.na(df$dep_2)] <- 0
+
+# Symptom 3
+df$dep_3 <- NA
+df$dep_3[df$dro_6_3_w4 == 1 | df$dro_7_3_w4 == 1] <- 1
+df$dep_3[is.na(df$dep_3)] <- 0
+
+# Symptom 4
+df$dep_4 <- NA
+df$dep_4[df$dro_6_4_w4 == 1 | df$dro_7_4_w4 == 1] <- 1
+df$dep_4[is.na(df$dep_4)] <- 0
+
+# Symptom 5
+df$dep_5 <- NA
+df$dep_5[df$dro_6_5_w4 == 1 | df$dro_7_5_w4 == 1] <- 1
+df$dep_5[is.na(df$dep_5)] <- 0
+
+# Symptom 6
+df$dep_6 <- NA
+df$dep_6[df$dro_6_6_w4 == 1 | df$dro_7_6_w4 == 1] <- 1
+df$dep_6[is.na(df$dep_6)] <- 0
+
+# Symptom 7
+df$dep_7 <- NA
+df$dep_7[df$dro_6_7_w4 == 1 | df$dro_7_7_w4 == 1] <- 1
+df$dep_7[is.na(df$dep_7)] <- 0
+
+# Symptom 8
+df$dep_8 <- NA
+df$dep_8[df$dro_6_8_w4 == 1 | df$dro_7_8_w4 == 1] <- 1
+df$dep_8[is.na(df$dep_8)] <- 0
+
+# Symptom 9
+df$dep_9 <- NA
+df$dep_9[df$dro_6_9_w4 == 1 | df$dro_7_9_w4 == 1] <- 1
+df$dep_9[is.na(df$dep_9)] <- 0
+
+# Symptom 10
+df$dep_10 <- NA
+df$dep_10[df$dro_6_10_w4 == 1 | df$dro_7_10_w4 == 1] <- 1
+df$dep_10[is.na(df$dep_10)] <- 0
+
+# Symptom 11
+df$dep_11 <- NA
+df$dep_11[df$dro_6_11_w4 == 1 | df$dro_7_11_w4 == 1] <- 1
+df$dep_11[is.na(df$dep_11)] <- 0
+
+# Yes if "Yes" in 1 or (2 & 3) == 1.
+df$dep12 <- NA
+df$dep12[df$dep_1 == 1 | df$dep_2 == 1] <- 1
+df$dep12[is.na(df$dep12)] <- 0
+
+df <- df %>%
+  mutate(dep_sum_w4 = rowSums(df[, c("dep12","dep_3","dep_4","dep_5","dep_6","dep_7")], na.rm=T))
+
+df <- df %>%
+  mutate_at(vars("dep_sum_w4"), 
+            function(x) car::recode(x, "0:2=0;3:6=1;NA=NA"))
+
+df$dep_sum_w4[is.na(df$dro_7_1_w4)] <- NA
+
+## Persistent dependence
+df$dep_sud[df$dep_sum_w0 == 1 & df$dep_sum_w4 == 1] <- 1
+df$dep_sud[is.na(df$dep_sud)] <- 0
+df$dep_sud[is.na(df$dro_7_1_w4)] <- NA
+
+# Suicide attempts during follow-up
+data_cov <- read.dta13("base_general_wide_convariables.dta") # data loading
+data_cov <- data_cov %>%
+  mutate_at(vars("sal_33_w4"), 
+            function(x) car::recode(x, "-9=NA; 1:3=1"))
+```
+
+# Mental health services utilization
+```{r}
+## Received mental health or substance use treatment during incarceration
+data_cov <- data_cov %>%
+  mutate_at(vars("sal_17_3_w2", "sal_17_4_w2",
+                 "sal_17_3_w3", "sal_17_4_w3",
+                 "sal_17_3_w4", "sal_17_4_w4"), 
+            function(x) car::recode(x, "-9=9;-7=0"))
+```
+
+# Sociodemographics
+```{r}
+## Age
+# table(data_cov$hdv_1_w0)
+
+## Education
+# table(data_cov$educ_gr3)
+```
+
+# Criminal legal involvement
+```{r}
+## Prior incarceration
+## Number of previous sentences
+data_cov$del_5_1_w0 [data_cov$del_5_1_w0 == '-7']<- NA 
+data_cov$del_5_1_w0 [data_cov$del_5_1_w0 == '-8']<- NA 
+data_cov$del_5_2_w0 [data_cov$del_5_2_w0 == '-7']<- NA 
+data_cov$del_5_2_w0 [data_cov$del_5_2_w0 == '-8']<- NA 
+data_cov$del_5_2_w0 [data_cov$del_5_2_w0 == '-9']<- NA 
+data_cov$prev_sent <- rowSums(data_cov[, c("del_5_1_w0","del_5_2_w0")]) 
+data_cov$prev_sent <- data_cov$prev_sent+1
+data_cov$prev_sent[is.na(data_cov$prev_sent)] <- 0
+data_cov$prev_sent [data_cov$del_4_w0 == '-9']<- NA # 1 missing value
+
+## Sentence length
+data_cov$del_11_1_w0 [data_cov$del_11_1_w0 == '-7']<- NA # Years
+data_cov$del_11_1_w0 [data_cov$del_11_1_w0 == '-8']<- NA 
+data_cov$del_11_1_w0 [data_cov$del_11_1_w0 == '-9']<- NA 
+data_cov$sent_year=data_cov$del_11_1_w0*365
+
+data_cov$del_11_2_w0 [data_cov$del_11_2_w0 == '-7']<- NA # Months
+data_cov$del_11_2_w0 [data_cov$del_11_2_w0 == '-8']<- NA 
+data_cov$del_11_2_w0 [data_cov$del_11_2_w0 == '-9']<- NA 
+data_cov$sent_month=data_cov$del_11_1_w0*30
+
+data_cov$del_11_3_w0 [data_cov$del_11_3_w0 == '-7']<- NA # Days
+data_cov$del_11_3_w0 [data_cov$del_11_3_w0 == '-8']<- NA 
+data_cov$del_11_3_w0 [data_cov$del_11_3_w0 == '-9']<- NA 
+
+data_cov$sent_lenght <- rowSums(data_cov[, c("sent_year","sent_month", "del_11_3_w0")]) 
+data_cov$sent_lenght <- data_cov$sent_lenght/365
+
+## Crime current offense
+df$crime_last <- df$del_10_w0
+
+df <- df %>%
+  mutate_at(vars("crime_last"), 
+            function(x) car::recode(x, "1:3=1; 5=1 ; 9:11=1 ; 7=2; 13=3; 19=3; 24=3; 15:16=4; 17:18=5; 22=5; 99=NA"))
+
+df[c("crime_last")] <- 
+  lapply(df[c("crime_last")], factor,
+                                 levels=c("1", 
+                                          "2",
+                                          "3",
+                                          "4",
+                                          "5"), 
+                                 labels = c("Theft",
+                                            "Robbery",
+                                            "Violent crimes against people",
+                                            "Drug offenses",
+                                            "Others"))
+```
+
+# Crime during follow-up
+## Calendars
+```{r}
+df_cal <- read.csv("C:/Users/ASUS/OneDrive - uc.cl/Documentos/GitHub/reentry-data-pipeline/output/calendario/crime_calendar_v0_1.csv")
+df_cal <- df_cal[!(df_cal$reg_muestra==0),]
+df_cal <- df_cal[-c(2:10,12,39:61)]
+cal <- reshape(df_cal, idvar = "reg_folio", timevar = "month_index", direction = "wide")
+```
+
+## Montlhy crime
+```{r}
+cal <- cal %>% rowwise() %>%
+          mutate(crime_01 = sum(c(rb_habitgente.1, rb_habitsin.1, rb_nohabit.1, rb_atm.1,
+                                  rb_vehi.1, rb_en_vehi.1, rb_hurto.1, rb_sorpresa.1, rb_intim_ame.1,
+                                  rb_intim_arma.1, rb_violencia.1, lesion.1, homi.1, amenazas.1,
+                                  drgs_prep.1, drgs_ventas.1, act_ilegal.1, recepta.1, vif.1, vandalismo.1,
+                                  estafas.1, armas.1), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_02 = sum(c(rb_habitgente.2, rb_habitsin.2, rb_nohabit.2, rb_atm.2,
+                                  rb_vehi.2, rb_en_vehi.2, rb_hurto.2, rb_sorpresa.2, rb_intim_ame.2,
+                                  rb_intim_arma.2, rb_violencia.2, lesion.2, homi.2, amenazas.2,
+                                  drgs_prep.2, drgs_ventas.2, act_ilegal.2, recepta.2, vif.2, vandalismo.2,
+                                  estafas.2, armas.2), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_03 = sum(c(rb_habitgente.3, rb_habitsin.3, rb_nohabit.3, rb_atm.3,
+                                  rb_vehi.3, rb_en_vehi.3, rb_hurto.3, rb_sorpresa.3, rb_intim_ame.3,
+                                  rb_intim_arma.3, rb_violencia.3, lesion.3, homi.3, amenazas.3,
+                                  drgs_prep.3, drgs_ventas.3, act_ilegal.3, recepta.3, vif.3, vandalismo.3,
+                                  estafas.3, armas.3), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_04 = sum(c(rb_habitgente.4, rb_habitsin.4, rb_nohabit.4, rb_atm.4,
+                                  rb_vehi.4, rb_en_vehi.4, rb_hurto.4, rb_sorpresa.4, rb_intim_ame.4,
+                                  rb_intim_arma.4, rb_violencia.4, lesion.4, homi.4, amenazas.4,
+                                  drgs_prep.4, drgs_ventas.4, act_ilegal.4, recepta.4, vif.4, vandalismo.4,
+                                  estafas.4, armas.4), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_05 = sum(c(rb_habitgente.5, rb_habitsin.5, rb_nohabit.5, rb_atm.5,
+                                  rb_vehi.5, rb_en_vehi.5, rb_hurto.5, rb_sorpresa.5, rb_intim_ame.5,
+                                  rb_intim_arma.5, rb_violencia.5, lesion.5, homi.5, amenazas.5,
+                                  drgs_prep.5, drgs_ventas.5, act_ilegal.5, recepta.5, vif.5, vandalismo.5,
+                                  estafas.5, armas.5), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_06 = sum(c(rb_habitgente.6, rb_habitsin.6, rb_nohabit.6, rb_atm.6,
+                                  rb_vehi.6, rb_en_vehi.6, rb_hurto.6, rb_sorpresa.6, rb_intim_ame.6,
+                                  rb_intim_arma.6, rb_violencia.6, lesion.6, homi.6, amenazas.6,
+                                  drgs_prep.6, drgs_ventas.6, act_ilegal.6, recepta.6, vif.6, vandalismo.6,
+                                  estafas.6, armas.6), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_07 = sum(c(rb_habitgente.7, rb_habitsin.7, rb_nohabit.7, rb_atm.7,
+                                  rb_vehi.7, rb_en_vehi.7, rb_hurto.7, rb_sorpresa.7, rb_intim_ame.7,
+                                  rb_intim_arma.7, rb_violencia.7, lesion.7, homi.7, amenazas.7,
+                                  drgs_prep.7, drgs_ventas.7, act_ilegal.7, recepta.7, vif.7, vandalismo.7,
+                                  estafas.7, armas.7), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_08 = sum(c(rb_habitgente.8, rb_habitsin.8, rb_nohabit.8, rb_atm.8,
+                                  rb_vehi.8, rb_en_vehi.8, rb_hurto.8, rb_sorpresa.8, rb_intim_ame.8,
+                                  rb_intim_arma.8, rb_violencia.8, lesion.8, homi.8, amenazas.8,
+                                  drgs_prep.8, drgs_ventas.8, act_ilegal.8, recepta.8, vif.8, vandalismo.8,
+                                  estafas.8, armas.8), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_09 = sum(c(rb_habitgente.9, rb_habitsin.9, rb_nohabit.9, rb_atm.9,
+                                  rb_vehi.9, rb_en_vehi.9, rb_hurto.9, rb_sorpresa.9, rb_intim_ame.9,
+                                  rb_intim_arma.9, rb_violencia.9, lesion.9, homi.9, amenazas.9,
+                                  drgs_prep.9, drgs_ventas.9, act_ilegal.9, recepta.9, vif.9, vandalismo.9,
+                                  estafas.9, armas.9), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_10 = sum(c(rb_habitgente.10, rb_habitsin.10, rb_nohabit.10, rb_atm.10,
+                                  rb_vehi.10, rb_en_vehi.10, rb_hurto.10, rb_sorpresa.10, rb_intim_ame.10,
+                                  rb_intim_arma.10, rb_violencia.10, lesion.10, homi.10, amenazas.10,
+                                  drgs_prep.10, drgs_ventas.10, act_ilegal.10, recepta.10, vif.10, vandalismo.10,
+                                  estafas.10, armas.10), na.rm=T))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime_11 = sum(c(rb_habitgente.11, rb_habitsin.11, rb_nohabit.11, rb_atm.11,
+                                  rb_vehi.11, rb_en_vehi.11, rb_hurto.11, rb_sorpresa.11, rb_intim_ame.11,
+                                  rb_intim_arma.11, rb_violencia.11, lesion.11, homi.11, amenazas.11,
+                                  drgs_prep.11, drgs_ventas.11, act_ilegal.11, recepta.11, vif.11, vandalismo.11,
+                                  estafas.11, armas.11), na.rm=T))
+
+for (i in 1:11) {
+  column_name <- paste0("crime_", sprintf("%02d", i))
+  column_summary <- summary(cal[[column_name]])
+  print(column_summary)
+}
+
+cal <- cal %>%
+  mutate(across(matches("crime_\\d+"), ~car::recode(.x, "1:10=1;NA=NA")))
+
+cal <- cal %>% rowwise() %>%
+          mutate(crime = sum(c(crime_01,crime_02,crime_03,crime_04,crime_05,crime_06,
+                               crime_07,crime_08,crime_09,crime_10,crime_11), na.rm=F))
+cal <- cal %>%
+  mutate_at(vars("crime"),
+            function(x) car::recode(x, "1:11=1;NA=NA"))
+
+# Arrest
+cal <- cal %>% rowwise() %>%
+          mutate(arrest = sum(c(jst_arrest.1,jst_arrest.2,jst_arrest.3,jst_arrest.4,jst_arrest.5,jst_arrest.6,
+                               jst_arrest.7,jst_arrest.8,jst_arrest.9,jst_arrest.1,jst_arrest.11), na.rm=T))
+
+cal <- cal %>%
+  mutate_at(vars("arrest"), 
+            function(x) car::recode(x, "1:11=1"))
+
+# Reincarceration
+cal <- cal %>% rowwise() %>%
+          mutate(prison = sum(c(jst_conpri.1,jst_conpri.2,jst_conpri.3,jst_conpri.4,jst_conpri.5,jst_conpri.6,
+                               jst_conpri.7,jst_conpri.8,jst_conpri.9,jst_conpri.1,jst_conpri.11), na.rm=T))
+
+cal <- cal %>%
+  mutate_at(vars("prison"), 
+            function(x) car::recode(x, "1:11=1"))
+
+cal <- cal[-c(2:324)]
+
+cal[c("crime","arrest","prison")] <- lapply(cal[c("crime","arrest","prison")], factor,
+                                 levels=c("0", 
+                                          "1"), 
+                                 labels = c("No",
+                                            "Yes"))
+```
+
+# Self reported mental health diagnosis
+```{r}
+## Mental health diagnosis
+data_cov$sal_19_13_w0 [data_cov$sal_19_13_w0 == '-9']<- NA 
+data_cov$sal_19_14_w0 [data_cov$sal_19_14_w0 == '-9']<- NA 
+data_cov$mh_diagno <- rowSums(data_cov[, c("sal_19_13_w0","sal_19_14_w0")]) 
+data_cov$mh_diagno[data_cov$mh_diagno == '2']<- 1 
+```
+
+# Substance use during incarceration
+```{r}
+# Alcohol
+data_cov <- mutate(data_cov, oh_incar = case_when(dro_drpre_2_2_w0 == 1  ~ 1,
+                                                  TRUE ~ 0))
+# Cannabis
+data_cov <- mutate(data_cov, mar_incar = case_when(dro_drpre_3_2_w0 == 1  ~ 1,
+                                                   TRUE ~ 0))
+# Cocaine or cocaine paste
+data_cov <- mutate(data_cov, coc_incar = case_when(dro_drpre_4_2_w0 == 1 | dro_drpre_5_2_w0 == 1  ~ 1,
+                                                   TRUE ~ 0))
+# Benzodiacepines
+data_cov <- mutate(data_cov, benz_incar = case_when(dro_drpre_6_2_w0 == 1 | dro_drpre_8_2_w0 == 1 ~ 1,
+                                                    TRUE ~ 0))
+```
+
+# ACES
+```{r}
+# Adult physical violence
+data_cov <- mutate(data_cov, phy_violence = case_when(hdv_vuln_6_1_w0 == 1 | hdv_vuln_6_2_w0 == 1 | hdv_vuln_6_3_w0 == 1 ~ 1,
+                                        TRUE ~ 0))
+
+# Sexual abuse
+data_cov <- mutate(data_cov, sex_abuse = case_when(hdv_vuln_7_1_w0 == 1 | hdv_vuln_7_2_w0 == 1 | hdv_vuln_7_3_w0 == 1 ~ 1,
+                                        TRUE ~ 0))
+
+# Rape or rape intents
+data_cov <- mutate(data_cov, rape = case_when(hdv_vuln_8_1_w0 == 1 | hdv_vuln_8_2_w0 == 1 | hdv_vuln_8_3_w0 == 1 ~ 1,
+                                        TRUE ~ 0))
+
+# Sexual abuse (broad)
+data_cov <- mutate(data_cov, srape = case_when(sex_abuse == 1 | rape == 1 ~ 1,
+                                        TRUE ~ 0))
+```
+
+# Adult victmization
+```{r}
+# Physical violence 
+data_cov <- mutate(data_cov, assault = case_when(del_vic_2_2_w4 >= 18 & del_vic_2_2_w4<hdv_1_w0 ~ 1,
+                                                 TRUE ~ 0))
+
+data_cov <- mutate(data_cov, weapon = case_when(del_vic_4_2_w4 >= 18 & del_vic_4_2_w4<hdv_1_w0 ~ 1,
+                                                 TRUE ~ 0))
+
+data_cov <- mutate(data_cov, phy_adlt = case_when(assault == 1 | weapon == 1  ~ 1,
+                                                 TRUE ~ 0))
+
+# Sexual Abuse
+data_cov <- mutate(data_cov, sex_abuse_adlt = case_when(hdv_vuln_7_4_w0 == 1 | hdv_vuln_8_4_w0 == 1 ~ 1,
+                                        TRUE ~ 0))
+
+## IPV prior incarceration
+data_cov$ipv_prior <- 0
+data_cov <- mutate(data_cov, ipv_prior = case_when(par_2_1_w0 == 1 | par_2_2_w0 == 1 | par_2_3_w0 == 1  ~ 1,
+                                                   TRUE ~ 0))
+```
+
+# Table 1
+## Variables from df
+```{r}
+df_des <- dplyr::select(df, reg_folio,
+                        scale_mean_w0, scale_mean_w1, scale_mean_w2, scale_mean_w3, scale_mean_w4, # Scale mean
+                        severity_w0, severity_w1, severity_w2, severity_w3, severity_w4, # Severity
+                        class, dep_sum_w0, dep_sum_w4, dep_sud, crime_last) 
+
+df_des$severity_w1[df_des$severity_w1 == "NaN"] <- NA
+df_des$severity_w2[df_des$severity_w2 == "NaN"] <- NA
+df_des$severity_w3[df_des$severity_w3 == "NaN"] <- NA
+df_des$severity_w4[df_des$severity_w4 == "NaN"] <- NA
+```
+
+## Variables from data_cov
+```{r}
+data_cov_des <- dplyr::select(data_cov, reg_folio,
+                              sal_33_w4, dep_abuse2, # Outcomes
+                              sal_9_5_w0, sal_17_3_w2, sal_17_3_w3, sal_17_3_w4, # Mental health services
+                              sal_9_6_w0, sal_17_4_w2 , sal_17_4_w3, sal_17_4_w4, # SUD treatment 
+                              hdv_1_w0, educ_gr3, # Age and education
+                              prev_sent, sent_lenght, # Criminal legal system involvement
+                              mh_diagno, oh_incar, mar_incar, coc_incar, benz_incar, # Other
+                              phy_violence, srape, phy_adlt, sex_abuse_adlt, ipv_prior) 
+```
+
+## Weights
+```{r}
+df_weights <- read.csv("~/GitHub/reentry-data-pipeline/output/research/sample-adjustment-weights.csv")
+names(df_weights)[names(df_weights) == "folio"] <- "reg_folio"
+```
+
+## Merge
+```{r}
+df_table1 <- merge(df_des,data_cov_des,by="reg_folio") 
+df_table1 <- merge(df_table1,df_weights,by="reg_folio")
+df_table1 <- merge(df_table1,cal,by="reg_folio")
+```
+
+## Define variables
+```{r}
+df_table1[c("sal_33_w4","dep_abuse2","sal_9_5_w0","sal_17_3_w2","sal_17_3_w3", "sal_17_3_w4",
+            "sal_9_6_w0","sal_17_4_w2","sal_17_4_w3","sal_17_4_w4","mh_diagno",
+            "oh_incar","mar_incar","coc_incar","benz_incar",
+            "ipv_prior", "phy_violence", "srape", "phy_adlt", "sex_abuse_adlt", 
+            "dep_sum_w0", "dep_sum_w4", "dep_sud")] <-
+  lapply(df_table1[c("sal_33_w4","dep_abuse2","sal_9_5_w0","sal_17_3_w2","sal_17_3_w3", "sal_17_3_w4",
+            "sal_9_6_w0","sal_17_4_w2","sal_17_4_w3","sal_17_4_w4","mh_diagno",
+            "oh_incar","mar_incar","coc_incar","benz_incar",
+            "ipv_prior", "phy_violence", "srape", "phy_adlt", "sex_abuse_adlt", 
+            "dep_sum_w0", "dep_sum_w4", "dep_sud")], factor,
+                                 levels=c("0", 
+                                          "1"), 
+                                 labels = c("No", 
+                                            "Yes"))
+
+df_table1$educ_gr3 <- as.numeric(df_table1$educ_gr3)
+df_table1 <- df_table1 %>%
+  mutate_at(vars("educ_gr3"), 
+            function(x) car::recode(x, "0:1=0;2=1;NA=NA")) 
+
+
+df_table1[c("educ_gr3")] <- lapply(df_table1[c("educ_gr3")], factor,
+                                 levels=c("0", 
+                                          "1"), 
+                                 labels = c("Incomplete highschool or less",
+                                            "Completed highschool"))
+
+## CREATING LABELS
+mylabels <- list(class = "Mental health symptomatology trajectory", 
+                scale_mean_w0 = "Global Severity Index (GSI) baseline", 
+                scale_mean_w1 = "Global Severity Index (GSI) first week", 
+                scale_mean_w2 = "Global Severity Index (GSI) two months", 
+                scale_mean_w3 = "Global Severity Index (GSI) six months", 
+                scale_mean_w4 = "Global Severity Index (GSI) twelve months", 
+                severity_w0 = "Severe Mental Health Symtomatology baseline", 
+                severity_w1 = "Severe Mental Health Symtomatology first week", 
+                severity_w2 = "Severe Mental Health Symtomatology two months", 
+                severity_w3 = "Severe Mental Health Symtomatology six months", 
+                severity_w4 = "Severe Mental Health Symtomatology twelve months", 
+                sal_33_w4 = "Suicide attempt during follow-up", 
+                dep_abuse2 = "Substance use disorder at baseline", 
+                sal_9_5_w0 = "Usage of mental health services baseline", 
+                sal_17_3_w2 = "Usage of mental health services two months", 
+                sal_17_3_w3 = "Usage of mental health services six months", 
+                sal_17_3_w4 = "Usage of mental health services twelve months", 
+                sal_9_6_w0 = "Usage of SUD treatment baseline", 
+                sal_17_4_w2 = "Usage of SUD treatment two months", 
+                sal_17_4_w3 = "Usage of SUD treatment six months", 
+                sal_17_4_w4 = "Usage of SUD treatment twelve months", 
+                hdv_1_w0 = "Age", 
+                educ_gr3 = "Education", 
+                prev_sent = "Number of previous sentences", 
+                sent_lenght = "Sentence length, yrs", 
+                predclass3G = "Criminal profile", 
+                mh_diagno = "Lifetime mental health diagnosis", 
+                maternal_stress = "Maternal stress at baseline", 
+                fam_support = "Family support at baseline", 
+                oh_incar = "Alcohol use 30 days prior baseline", 
+                mar_incar = "Cannabis use 30 days prior baseline", 
+                coc_incar = "Cociane use 30 days prior baseline", 
+                benz_incar = "Benzodiazepines use 30 days prior baseline", 
+                homeless = "Homeless before 18", 
+                homeless_06 = "Homeless between 0 and 6 yrs old", 
+                homeless_712 = "Homeless between 7 and 12 yrs old", 
+                homeless_1317 = "Homeless between 13 and 17 yrs old", 
+                childprotect = "Lived in child welfare services before 18", 
+                childprotect_06 = "Lived in child welfare services between 0 and 6 yrs old", 
+                childprotect_712 = "Lived in child welfare services between 7 and 12 yrs old", 
+                childprotect_1317 = "Lived in child welfare services between 13 and 17 yrs old", 
+                negli = "Negligence before 18", 
+                negli_06 = "Negligence between 0 and 6 yrs old", 
+                negli_712 = "Negligence between 7 and 12 yrs old", 
+                negli_1317 = "Negligence between 13 and 17 yrs old", 
+                scream = "Adult in their household insulted, screamed or broke their belongings before 18", 
+                scream_06 = "Adult in their household insulted, screamed or broke their belongings between 0 and 6 yrs old", 
+                scream_712 = "Adult in their household insulted, screamed or broke their belongings between 7 and 12 yrs old", 
+                scream_1317 = "Adult in their household insulted, screamed or broke their belongings between 13 and 17 yrs old", 
+                homekicked = "Adult in their household threaten to kick her out or did kick her out before 18", 
+                homekicked_06 = "Adult in their household threaten to kick her out or did kick her out between 0 and 6 yrs old", 
+                homekicked_712 = "Adult in their household threaten to kick her out or did kick her out between 7 and 12 yrs old", 
+                homekicked_1317 = "Adult in their household threaten to kick her out or did kick her out between 13 and 17 yrs old", 
+                phy_violence = "Physical violence before 18", 
+                phy_violence_06 = "Physical violence between 0 and 6 yrs old", 
+                phy_violence_712 = "Physical violence between 7 and 12 yrs old", 
+                phy_violence_1317 = "Physical violence between 13 and 17 yrs old", 
+                sex_abuse = "Sexual abuse before 18", 
+                sex_abuse_06 = "Sexual abuse between 0 and 6 yrs old", 
+                sex_abuse_712 = "Sexual abuse between 7 and 12 yrs old", 
+                sex_abuse_1317 = "Sexual abuse between 13 and 17 yrs old", 
+                rape = "Rape or rape intents before 18", 
+                rape_06 = "Rape or rape intents between 0 and 6 yrs old", 
+                rape_712 = "Rape or rape intents between 7 and 12 yrs old", 
+                rape_1317 = "Rape or rape intents between 13 and 17 yrs old", 
+                num_aces = "Number of ACEs", 
+                robbery = "Robbery", 
+                assault = "Assault", 
+                sex_abuse_adlt = "Sexual abuse", 
+                weapon = "Aggression with a weapon ", 
+                ipv_prior = "Intimate partner violence",
+                phy_violence = "Physical violence before 18",
+                srape = "Sexual abuse before 18",
+                phy_adlt = "Physical violence after 18",
+                crime = "Recidivism during follow-up",
+                arrest = "Arrest during follow-up",
+                prison = "Reincarceration during follow-up"
+)
+
+df_table1$severity_w1 <- droplevels(df_table1$severity_w1)
+df_table1$severity_w2 <- droplevels(df_table1$severity_w2)
+df_table1$severity_w3 <- droplevels(df_table1$severity_w3)
+df_table1$severity_w4 <- droplevels(df_table1$severity_w4)
+```
+
+## Table 1: trajectories
+```{r eval=FALSE}
+mh_tab1 <- tableby( ~ class, 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1, weights = w)
+
+# With weights
+mh_tab1 <- tableby(class ~ class + scale_mean_w0  + scale_mean_w1 +	scale_mean_w2 +	scale_mean_w3 +	scale_mean_w4 + severity_w0 + 
+                           severity_w1 + 	severity_w2 +	severity_w3 +	severity_w4 + 	sal_33_w4  + 	sal_9_5_w0 +
+                           sal_17_3_w2 + 	sal_17_3_w3 + sal_17_3_w4 +	sal_9_6_w0 + 	sal_17_4_w2 + 	sal_17_4_w3 + 	sal_17_4_w4 + 
+                           hdv_1_w0 + 	educ_gr3 + 	prev_sent + 	sent_lenght  + 	crime_last + mh_diagno + dep_sum_w0 + dep_sum_w4 + dep_sud +
+                           oh_incar + 	mar_incar + 	coc_incar + 	benz_incar + 	phy_violence +   srape	 +   phy_adlt	 +  
+                           sex_abuse_adlt +  ipv_prior + crime + arrest + prison, 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1, weights = w)
+
+summary(mh_tab1, labelTranslations = mylabels, text=TRUE)
+
+# Without weights
+mh_tab1_nw <- tableby(class ~ class + scale_mean_w0  + scale_mean_w1 +	scale_mean_w2 +	scale_mean_w3 +	scale_mean_w4 + fe(severity_w0) + 
+                           fe(severity_w1) + 	fe(severity_w2) +	fe(severity_w3) +	fe(severity_w4) + 	sal_33_w4  + 	sal_9_5_w0 +
+                           sal_17_3_w2 + 	sal_17_3_w3 + sal_17_3_w4 +	sal_9_6_w0 + 	sal_17_4_w2 + 	sal_17_4_w3 + 	sal_17_4_w4 + 
+                           hdv_1_w0 + 	fe(educ_gr3) + 	prev_sent + 	sent_lenght  + 	fe(crime_last) + 	fe(mh_diagno) + dep_sum_w0 + dep_sum_w4 + dep_sud +
+                           fe(oh_incar) + 	fe(mar_incar) + 	fe(coc_incar) + 	fe(benz_incar) + fe(phy_violence) + fe(srape) +  
+                           fe(phy_adlt)	 +   fe(sex_abuse_adlt) +  fe(ipv_prior)  + fe(crime) + fe(arrest) + fe(prison), 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1)
+
+##SUMMARY WITH LABELS
+summary(mh_tab1_nw, labelTranslations = mylabels, text=TRUE)
+```
+
+## Table 1: suicide
+```{r eval=FALSE}
+# With weights
+mh_sui <- tableby(sal_33_w4 ~ class + scale_mean_w0  + scale_mean_w1 +	scale_mean_w2 +	scale_mean_w3 +	scale_mean_w4 + severity_w0 + 
+                           severity_w1 + 	severity_w2 +	severity_w3 +	severity_w4  + 	sal_9_5_w0 +
+                           sal_17_3_w2 + 	sal_17_3_w3 + sal_17_3_w4 +	sal_9_6_w0 + 	sal_17_4_w2 + 	sal_17_4_w3 + 	sal_17_4_w4 + 
+                           hdv_1_w0 + 	educ_gr3 + 	prev_sent + 	sent_lenght  + 	crime_last + mh_diagno + dep_sum_w0 + dep_sum_w4 + dep_sud +
+                           oh_incar + 	mar_incar + 	coc_incar + 	benz_incar + 	phy_violence +   srape	 +   phy_adlt	 +  
+                           sex_abuse_adlt +  ipv_prior + crime + arrest + prison, 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1, weights = w)
+
+summary(mh_sui, labelTranslations = mylabels, text=TRUE)
+
+# Without weights
+mh_sui_nw <- tableby(sal_33_w4 ~ fe(class) + scale_mean_w0  + scale_mean_w1 +	scale_mean_w2 +	scale_mean_w3 +	scale_mean_w4 + fe(severity_w0) + 
+                           fe(severity_w1) + 	fe(severity_w2) +	fe(severity_w3) +	fe(severity_w4) + 	sal_33_w4  + 	sal_9_5_w0 +
+                           sal_17_3_w2 + 	sal_17_3_w3 + sal_17_3_w4 +	sal_9_6_w0 + 	sal_17_4_w2 + 	sal_17_4_w3 + 	sal_17_4_w4 + 
+                           hdv_1_w0 + 	fe(educ_gr3) + 	prev_sent + 	sent_lenght  + 	fe(crime_last) + 	fe(mh_diagno) + dep_sum_w0 + dep_sum_w4 + dep_sud +
+                           fe(oh_incar) + 	fe(mar_incar) + 	fe(coc_incar) + 	fe(benz_incar) + fe(phy_violence) + fe(srape) +  
+                           fe(phy_adlt)	 +   fe(sex_abuse_adlt) +  fe(ipv_prior) + fe(crime) + fe(arrest) + fe(prison), 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1)
+
+summary(mh_sui_nw, labelTranslations = mylabels, text=TRUE)
+```
+
+## Table 1: persistent sud
+```{r eval=FALSE}
+# With weights
+mh_dep_sud <- tableby(dep_sud ~ class + sal_33_w4 + scale_mean_w0  + scale_mean_w1 +	scale_mean_w2 +	scale_mean_w3 +	scale_mean_w4 + severity_w0 + 
+                           severity_w1 + 	severity_w2 +	severity_w3 +	severity_w4  + 	sal_9_5_w0 +
+                           sal_17_3_w2 + 	sal_17_3_w3 + sal_17_3_w4 +	sal_9_6_w0 + 	sal_17_4_w2 + 	sal_17_4_w3 + 	sal_17_4_w4 + 
+                           hdv_1_w0 + 	educ_gr3 + 	prev_sent + 	sent_lenght  + 	crime_last + mh_diagno + dep_sum_w0 + dep_sum_w4  +
+                           oh_incar + 	mar_incar + 	coc_incar + 	benz_incar + 	phy_violence +   srape	 +   phy_adlt	 +  
+                           sex_abuse_adlt +  ipv_prior + crime + arrest + prison, 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1, weights = w)
+
+summary(mh_dep_sud, labelTranslations = mylabels, text=TRUE)
+
+# Without weights
+mh_dep_sud_nw <- tableby(dep_sud ~ fe(class) + fe(sal_33_w4) + scale_mean_w0  + scale_mean_w1 +	scale_mean_w2 +	scale_mean_w3 +	scale_mean_w4 + fe(severity_w0) + 
+                           fe(severity_w1) + 	fe(severity_w2) +	fe(severity_w3) +	fe(severity_w4) + 	sal_33_w4  + 	sal_9_5_w0 +
+                           sal_17_3_w2 + 	sal_17_3_w3 + sal_17_3_w4 +	sal_9_6_w0 + 	sal_17_4_w2 + 	sal_17_4_w3 + 	sal_17_4_w4 + 
+                           hdv_1_w0 + 	fe(educ_gr3) + 	prev_sent + 	sent_lenght  + 	fe(crime_last) + 	fe(mh_diagno) + dep_sum_w0 + dep_sum_w4 + 
+                           fe(oh_incar) + 	fe(mar_incar) + 	fe(coc_incar) + 	fe(benz_incar) + fe(phy_violence) + fe(srape) +  
+                           fe(phy_adlt)	 +   fe(sex_abuse_adlt) +  fe(ipv_prior) + fe(crime) + fe(arrest) + fe(prison), 
+                   data = df_table1, numeric.stats=c("mean", "sd", "Nmiss", "N"),
+                   digits=1, digits.p=3, digits.pct=1)
+
+summary(mh_dep_sud_nw, labelTranslations = mylabels, text=TRUE)
+```
+
+# Models predicting the trajectories
+```{r}
+df_model <- df_table1[ -c(2:6,8:11,14,16,18:26,30:35,42:45) ]
+
+## Multiple imputation by chain equations
+# Explore missing data patterns
+p_missing <- unlist(lapply(df_model, function(x) sum(is.na(x))))/nrow(df_model)
+sort(p_missing[p_missing > 0], decreasing = TRUE)
+
+# Run the mice code with 0 iterations 
+imp <- mice(df_model, maxit=0)
+
+# Extract predictorMatrix and methods of imputation 
+predM <- imp$predictorMatrix
+meth <- imp$method
+
+# Setting values of variables I'd like to leave out to 0 in the predictor matrix
+predM[, c("reg_folio")] <- 0
+predM[, c("w")] <- 0
+
+# If you like, view the first few rows of the predictor matrix
+head(predM)
+
+# Specify a separate imputation model for variables of interest 
+
+# Numerical variables
+num <- c("prev_sent")
+
+# Ordered categorical variables 
+#poly <- c()
+
+# Dichotomous variable
+log <- c("severity_w0", "sal_33_w4")
+
+# Unordered categorical variable 
+#poly2 <- c("crime_last")
+
+# Turn their methods matrix into the specified imputation models
+meth[num] <- "norm.boot"
+meth[log] <- "logreg.boot"
+#meth[poly] <- "polyreg"
+#meth[poly2] <- "polyreg"
+
+# MICE
+imp2 <- mice(df_model, maxit = 30, 
+             predictorMatrix = predM, 
+             method = meth, print =  FALSE)
+
+library(jmv)
+library(nnet)
+library(gtsummary)
+library(magrittr)
+
+multinom_pivot_wider <- function(x) {
+  # check inputs match expectatations
+  if (!inherits(x, "tbl_regression") || !inherits(x$model_obj, "multinom")) {
+    stop("`x=` must be class 'tbl_regression' summary of a `nnet::multinom()` model.")
+  }
+  
+  # create tibble of results
+  df <- tibble::tibble(outcome_level = unique(x$table_body$groupname_col))
+  df$tbl <- 
+    purrr::map(
+      df$outcome_level,
+      function(lvl) {
+        gtsummary::modify_table_body(
+          x, 
+          ~dplyr::filter(.x, .data$groupname_col %in% lvl) %>%
+            dplyr::ungroup() %>%
+            dplyr::select(-.data$groupname_col)
+        )
+      }
+    )
+  
+  tbl_merge(df$tbl, tab_spanner = paste0("**", df$outcome_level, "**"))
+}
+
+# Unadjusted models - class
+# Age
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ hdv_1_w0 ,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes1.rtf")
+
+# Education
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ educ_gr3 ,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes2.rtf")
+
+# Previous sentences
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ prev_sent ,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes3.rtf")
+
+# SUD baseline
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ dep_sum_w0,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes4.rtf")
+
+# Severity baseline
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ severity_w0,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes5.rtf")
+
+# Physical violence -18
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ phy_violence,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes6.rtf")
+
+# Sexual abuse -18
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ srape ,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes7.rtf")
+
+# Physical violence +18
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ phy_adlt,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes8.rtf")
+
+# Sexual abuse +18
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~ sex_abuse_adlt ,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes9.rtf")
+
+# IPV
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~  ipv_prior ,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes10.rtf")
+
+# multinom model - Class
+set.seed(2002)
+tbl <- with(imp2,
+            nnet::multinom(class ~  educ_gr3 + prev_sent + dep_sum_w0 + phy_adlt + ipv_prior,  
+                 data = df_model, weights = w)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_classes.rtf")
+```
+
+# Models for suicide
+```{r}
+# Unadjusted models - suicide
+# Age
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ hdv_1_w0 ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide1.rtf")
+
+# Education
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ educ_gr3 ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide2.rtf")
+
+# Previous sentences
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ prev_sent ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide3.rtf")
+
+# SUD baseline
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ dep_sum_w0,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide4.rtf")
+
+# Severity baseline
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ severity_w0,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide5.rtf")
+
+# Physical violence -18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ phy_violence,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide6.rtf")
+
+# Sexual abuse -18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ srape ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide7.rtf")
+
+# Physical violence +18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~  phy_adlt,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide8.rtf")
+
+# Sexual abuse +18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ sex_abuse_adlt,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide9.rtf")
+
+# IPV prior
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~ ipv_prior,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide10.rtf")
+
+# logistic model - sal_33_w4
+m1 <- glm(sal_33_w4 ~  hdv_1_w0 + educ_gr3 + prev_sent + dep_sum_w0 + severity_w0 + phy_violence + srape + phy_adlt + sex_abuse_adlt + ipv_prior,  
+                 data = df_model, weights = w, family = binomial)
+
+# Variance Inflated Factors (VIFs)
+library(car)
+vif(m1)
+1/vif(m1)
+
+set.seed(2002)
+tbl <- with(imp2,
+            glm(sal_33_w4 ~  hdv_1_w0 + educ_gr3 + prev_sent + dep_sum_w0 + severity_w0 + phy_violence + srape + phy_adlt + sex_abuse_adlt + ipv_prior,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_suicide.rtf")
+```
+
+# Models for persistent SUD
+```{r}
+# Unadjusted models - Persistent dependence
+# Age
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ hdv_1_w0 ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud1.rtf")
+
+# Education
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ educ_gr3 ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud2.rtf")
+
+# Previous sentences
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ prev_sent ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud3.rtf")
+
+# SUD baseline
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ dep_sum_w0,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud4.rtf")
+
+# Severity baseline
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ severity_w0,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud5.rtf")
+
+# Physical -18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ phy_violence,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud6.rtf")
+
+# Sexual abuse
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ srape,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud7.rtf")
+
+# Physical +18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ phy_adlt ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud8.rtf")
+
+# Sexual abuse +18
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ sex_abuse_adlt ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud9.rtf")
+
+# IPV
+set.seed(2002)
+tbl <- with(imp2,
+            glm(dep_sud ~ ipv_prior ,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud10.rtf")
+
+# logistic model - dep_sud
+set.seed(2002)
+m2 <- glm(dep_sud ~  hdv_1_w0 + educ_gr3 + prev_sent + dep_sum_w0 + severity_w0 + phy_violence + srape + phy_adlt + sex_abuse_adlt + ipv_prior,  
+                 data = df_model, weights = w, family = binomial)
+
+# VIFs
+vif(m2)
+1/vif(m2)
+
+tbl <- with(imp2,
+            glm(dep_sud ~  hdv_1_w0 + educ_gr3 + prev_sent + severity_w0 + phy_violence + srape + phy_adlt + sex_abuse_adlt + ipv_prior,  
+                 data = df_model, weights = w, family = binomial)) %>%
+  tbl_regression(exponentiate = TRUE, label = mylabels)
+
+tbl %>%
+  gtsummary::as_gt() %>% 
+  gt::gtsave(., "C:/Users/ASUS/CJS UC Dropbox/Ignacio Bórquez/2. Salud Mental/Datos/m_pers_sud.rtf")
+```
+
