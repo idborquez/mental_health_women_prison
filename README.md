@@ -1,2 +1,2 @@
-# Mental Health Symptoms, Suicide Attempts and Substance Use Disorders among Women After Prison Release in Santiago, Chile.
+# Trajectories of mental health symptoms, suicide attempts, and substance use disorders (SUDs) among women after prison release in Santiago, Chile.
 Code available for manuscript
